@@ -11,6 +11,11 @@
 #include <time.h> // For struct timespec, clock_gettime, CLOCK_MONOTONIC
 #endif
 
+#ifdef __MACH__
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
+
 #define MAX_SPEED 8.4  // definning Hopper Max Gflops/s per node
 
 /* reference_dgemm wraps a call to the BLAS-3 routine DGEMM, via the standard FORTRAN interface - hence the reference semantics. */ 
@@ -33,6 +38,24 @@ void reference_dgemm (int N, double ALPHA, double* A, double* B, double* C)
 extern const char* dgemm_desc;
 extern void square_dgemm (int, double*, double*, double*);
 
+
+// Use clock_gettime in linux, clock_get_time in OS X.
+void get_monotonic_time(struct timespec *ts){
+#ifdef __MACH__
+  clock_serv_t cclock;
+  mach_timespec_t mts;
+  host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &cclock);
+  clock_get_time(cclock, &mts);
+  mach_port_deallocate(mach_task_self(), cclock);
+  ts->tv_sec = mts.tv_sec;
+  ts->tv_nsec = mts.tv_nsec;
+#else
+  clock_gettime(CLOCK_MONOTONIC, ts);
+#endif
+}
+
+
+
 double wall_time ()
 {
 #ifdef GETTIMEOFDAY
@@ -41,7 +64,7 @@ double wall_time ()
   return 1.*t.tv_sec + 1.e-6*t.tv_usec;
 #else
   struct timespec t;
-  clock_gettime (CLOCK_MONOTONIC, &t);
+  get_monotonic_time(&t);
   return 1.*t.tv_sec + 1.e-9*t.tv_nsec;
 #endif
 }

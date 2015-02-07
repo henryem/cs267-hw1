@@ -4,7 +4,14 @@
 ifdef UBUNTU
   CC = gcc 
   LDLIBS = -lrt -lblas
-else
+  OSFOUND=1
+endif
+ifdef OSX
+  CC = gcc
+  LDLIBS = -lblas
+  OSFOUND=1
+endif
+ifndef OSFOUND
   CC = cc
   LDLIBS = -lrt
 endif
