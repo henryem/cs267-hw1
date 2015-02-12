@@ -21,8 +21,8 @@ CFLAGS = -Wall -std=gnu99 $(OPT)
 LDFLAGS = -Wall
 # librt is needed for clock_gettime
 
-targets = benchmark-naive benchmark-blocked-baseline benchmark-blas benchmark-blocked
-objects = benchmark.o dgemm-naive.o dgemm-blocked-baseline.o dgemm-blas.o dgemm-blocked
+targets = benchmark-naive benchmark-blocked-baseline benchmark-blas benchmark-blocked benchmark-simd
+objects = benchmark.o dgemm-naive.o dgemm-blocked-baseline.o dgemm-blas.o dgemm-blocked dgemm-simd.o
 
 .PHONY : default
 default : all
@@ -38,6 +38,8 @@ benchmark-blas : benchmark.o dgemm-blas.o
 	$(CC) -o $@ $^ $(LDLIBS)
 benchmark-blocked : benchmark.o dgemm-blocked.o 
 	$(CC) -o $@ $^ $(LDLIBS)
+benchmark-simd : benchmark.o dgemm-simd.o
+	$(CC) -DCLS=$(getconf LEVEL1_DCACHE_LINESIZE) -O3 -o $@ $^ $(LDLIBS)
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $<
