@@ -1,4 +1,12 @@
-const char* dgemm_desc = "Simple blocked dgemm.";
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "dgemm-blocked.h"
+#include "matrix-storage.h"
+#include "matrix-blocking.h"
+
+const char* dgemm_desc = "Blocked dgemm with optimizations.";
 
 #if !defined(BLOCK_SIZE)
 #define BLOCK_SIZE 41
@@ -6,43 +14,153 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
-/* This auxiliary subroutine performs a smaller dgemm operation
- *  C := C + A * B
- * where C is M-by-N, A is M-by-K, and B is K-by-N. */
-static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
-{
-  /* For each row i of A */
-  for (int i = 0; i < M; ++i)
-    /* For each column j of B */ 
-    for (int j = 0; j < N; ++j) 
-    {
-      /* Compute C(i,j) */
-      double cij = C[i+j*lda];
-      for (int k = 0; k < K; ++k)
-	cij += A[i+k*lda] * B[k+j*lda];
-      C[i+j*lda] = cij;
+const int NUM_LEVELS = 1;
+//FIXME
+const int BLOCK_COUNTS[] = {64};
+
+// Things to try:
+//  * Load (or cache) the matrix in block format.  It would be interesting to
+//    preload the matrix this way to see what the maximum performance gain is.
+//  * Use vectorized ops for the blocks.
+//  * Optimize the block strategy for laptop and Hopper.  Probably want to
+//    report numbers for the whole parameter space.
+
+// Questions:
+//  * What is the best way to use different algorithm strategies?  Putting
+//    conditionals everywhere may impact performance.  Perhaps the impact is
+//    minimal if the strategies are high-level.
+
+dgemm_square_block_strategy* dgemm_square_block_strategy_new(int num_levels, const int *block_counts) {
+  dgemm_square_block_strategy* s = malloc(sizeof(dgemm_square_block_strategy));
+  s->num_levels = num_levels;
+  int* block_counts_copy = malloc(num_levels * sizeof(int));
+  memcpy(block_counts_copy, block_counts, num_levels * sizeof(int));
+  s->block_counts = block_counts_copy;
+  return s;
+}
+
+void dgemm_square_block_strategy_free(dgemm_square_block_strategy* s) {
+  free(s->block_counts);
+  free(s);
+}
+
+int smallest_block_size(dgemm_square_block_strategy* strategy, int matrix_size) {
+  int block_size = matrix_size;
+  for (int level = 0; level < strategy->num_levels; level++) {
+    block_size /= strategy->block_counts[level];
+  }
+  return block_size;
+}
+
+/* Perform dgemm on a single square block -- the actual multiplication step
+ *  C[i,j] += A[i,k] * B[k,j],
+ * where X[l,m] refers to the (l,m) block of matrix X.
+ * 
+ * @param A is the whole matrix, in which @a_block references a single block.
+ *   The same is true for @B.  @C is assumed to share a format with @A.
+ */
+static void do_block (double* A, square_mat_square_block* a_block, double* B, square_mat_square_block* b_block, double* C) {
+  int block_size = a_block->block_size;
+  //FIXME: We assume C has the same format as A.
+  square_mat_square_block* c_block = square_mat_square_block_new(block_size, a_block->block_row_idx, b_block->block_col_idx, a_block->format);
+  /* For each row of block a_block: */
+  for (int a_row_idx = 0; a_row_idx < block_size; a_row_idx++) {
+    /* For each column of block b_block: */
+    for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
+      /* Compute the contribution to c_block[a_row_idx,b_col_idx] */
+      double running_sum = 0;
+      /* Compute the dot product <A[a_row_idx,.]^T, B[.,b_col_idx]>. */
+      for (int inner_idx = 0; inner_idx < block_size; inner_idx++) {
+        //TODO: Could avoid function calls (which should be inlined) and a few
+        // add/subtracts (which will not be eliminated by the compiler) here by
+        // directly calculating the indices.
+        int a_idx = get_index_in_matrix(a_block, a_row_idx, inner_idx);
+        int b_idx = get_index_in_matrix(b_block, inner_idx, b_col_idx);
+	      running_sum += A[a_idx] * B[b_idx];
+      }
+      int c_idx = get_index_in_matrix(c_block, a_row_idx, b_col_idx);
+      C[c_idx] += running_sum;
     }
+  }
+}
+
+/* Perform a dgemm operation
+ *  C := C + A * B
+ * where A, B, and C are matrix_size-by-matrix_size matrices stored in column-major format.
+ * The operation is done recursively, according to @strategy.
+ */
+static void recursive_block_dgemm(
+    double* A,
+    square_mat_square_block* a_block,
+    double* B,
+    square_mat_square_block* b_block,
+    double* C,
+    dgemm_square_block_strategy* strategy,
+    int level) {
+  // printf("recursive_block_dgemm at level %d\n", level);
+  if (level == 0) {
+    do_block(A, a_block, B, b_block, C);
+  } else {  
+    int block_count = strategy->block_counts[level-1];
+    /* For each block-row of A */ 
+    for (int a_row_idx = 0; a_row_idx < block_count; a_row_idx++) {
+      /* For each block-column of B */
+      for (int b_col_idx = 0; b_col_idx < block_count; b_col_idx++) {
+        /* Accumulate block dgemms into block of C */
+        for (int inner_idx = 0; inner_idx < block_count; inner_idx++) {
+          square_mat_square_block* a_subblock = get_subblock(a_block, block_count, a_row_idx, inner_idx);
+          square_mat_square_block* b_subblock = get_subblock(b_block, block_count, inner_idx, b_col_idx);
+          recursive_block_dgemm(A, a_subblock, B, b_subblock, C, strategy, level-1);
+          free(a_subblock);
+          free(b_subblock);
+        }
+      }
+    }
+  }
+}
+
+static dgemm_square_block_strategy* get_static_strategy(int matrix_size) {
+  return dgemm_square_block_strategy_new(NUM_LEVELS, BLOCK_COUNTS);
+}
+
+void square_dgemm_with_strategy(int matrix_size, double* A, double* B, double* C, dgemm_square_block_strategy* dgemm_strategy) {
+  // Determine the storage strategy to be used for the matrices.
+  matrix_storage_strategy storage_strategy = BLOCK;
+  int storage_block_size = smallest_block_size(dgemm_strategy, matrix_size);
+  square_matrix_storage_format* new_format = square_matrix_storage_format_new(matrix_size, storage_strategy, storage_block_size);
+  printf("New format: new_format->block_size=%d\n", new_format->block_size);
+  
+  // Copy each matrix into block format.
+  // printf("Copying matrices to block format.\n");
+  square_matrix_storage_format* original_format = square_matrix_storage_format_new(matrix_size, COLUMN_MAJOR, 0);
+  double* formatted_a = to_format(A, original_format, new_format);
+  double* formatted_b = to_format(B, original_format, new_format);
+  double* formatted_c = to_format(C, original_format, new_format);
+  
+  // Do the matrix multiply, storing the result in formatted_c.
+  // printf("Starting recursive_block_dgemm with %d levels\n", dgemm_strategy->num_levels);
+  square_mat_square_block* starting_block_a = trivial_block(new_format);
+  square_mat_square_block* starting_block_b = trivial_block(new_format);
+  recursive_block_dgemm(formatted_a, starting_block_a, formatted_b, starting_block_b, formatted_c, dgemm_strategy, dgemm_strategy->num_levels);
+  
+  // Copy the result back to C.
+  copy_to_format(formatted_c, new_format, C, original_format);
+  
+  free(starting_block_a);
+  free(starting_block_b);
+  free(original_format);
+  free(new_format);
+  free(formatted_a);
+  free(formatted_b);
+  free(formatted_c);
 }
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
- * where A, B, and C are lda-by-lda matrices stored in column-major format. 
+ * where A, B, and C are matrix_size-by-matrix_size matrices stored in column-major format. 
  * On exit, A and B maintain their input values. */  
-void square_dgemm (int lda, double* A, double* B, double* C)
-{
-  /* For each block-row of A */ 
-  for (int i = 0; i < lda; i += BLOCK_SIZE)
-    /* For each block-column of B */
-    for (int j = 0; j < lda; j += BLOCK_SIZE)
-      /* Accumulate block dgemms into block of C */
-      for (int k = 0; k < lda; k += BLOCK_SIZE)
-      {
-	/* Correct block dimensions if block "goes off edge of" the matrix */
-	int M = min (BLOCK_SIZE, lda-i);
-	int N = min (BLOCK_SIZE, lda-j);
-	int K = min (BLOCK_SIZE, lda-k);
-
-	/* Perform individual block dgemm */
-	do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
-      }
+void square_dgemm (int matrix_size, double* A, double* B, double* C) {
+  dgemm_square_block_strategy* dgemm_strategy = get_static_strategy(matrix_size);
+  square_dgemm_with_strategy(matrix_size, A, B, C, dgemm_strategy);
+  dgemm_square_block_strategy_free(dgemm_strategy);
 }
