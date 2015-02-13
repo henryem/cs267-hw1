@@ -12,6 +12,7 @@ ifdef OSX
   OSFOUND=1
 endif
 ifndef OSFOUND
+  HOPPER = 1
   CC = cc
   LDLIBS = -lrt
 endif
@@ -24,7 +25,12 @@ ifdef PROFILE
 endif
 
 ifdef FULL_OPT
-  OPTIMIZATION = -O3 -ftree-vectorize -ftree-vectorizer-verbose=2
+  ifdef HOPPER
+    #HACK: -ftree-vectorizer is not available with Clang, the compiler we are using on OSX.
+    OPTIMIZATION = -O3 -ftree-vectorize -ftree-vectorizer-verbose=2
+  else
+    OPTIMIZATION = -O3
+  endif
 else
   OPTIMIZATION = -O0
 endif
