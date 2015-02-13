@@ -24,7 +24,7 @@ ifdef PROFILE
 endif
 
 ifdef FULL_OPT
-  OPTIMIZATION = -O3
+  OPTIMIZATION = -O3 -ftree-vectorize -ftree-vectorizer-verbose=2
 else
   OPTIMIZATION = -O0
 endif

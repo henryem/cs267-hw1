@@ -8,8 +8,8 @@
 #include "unit-test-framework.h"
 #include "matrix-storage.h"
 
-#define div_round_up(a, b) ((a+b-1) / b)
-#define xor(a, b) ((a && !b) || (!a && b))
+#define div_round_up(a, b) (((a)+(b)-1) / (b))
+#define xor(a, b) (((a) && !(b)) || (!(a) && (b)))
 
 square_matrix_storage_format* square_matrix_storage_format_new(int matrix_size, matrix_storage_strategy strategy, int block_size) {
   assert(matrix_size > 0);

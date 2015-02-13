@@ -16,7 +16,23 @@ const char* dgemm_desc = "One-level blocked dgemm with optimizations.";
  * It is assumed that a_block is stored in row-major format, b_block in column-
  * major, and c_block in column-major, all with block size block_size.
  */
-static void do_block (int block_size, double* a_block, double* b_block, double* c_block) {
+static void do_block(int block_size, double* a_block, double* b_block, double* c_block) {
+  /* For each column of b_block */ 
+  for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
+    /* For each row of a_block */
+    for (int a_row_idx = 0; a_row_idx < block_size; a_row_idx++) {
+      /* Compute the inner product and increment c_block[a_row_idx,b_col_idx] */
+      int c_raw_idx = a_row_idx + b_col_idx*block_size;
+      double running_sum = 0.0;
+      for (int inner_idx = 0; inner_idx < block_size; inner_idx++) {
+	      running_sum += a_block[inner_idx + a_row_idx*block_size] * b_block[inner_idx + b_col_idx*block_size];
+      }
+      c_block[c_raw_idx] += running_sum;
+    }
+  }
+}
+
+static void do_block_with_simd(int block_size, double* a_block, double* b_block, double* c_block) {
   /* For each column of b_block */ 
   for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
     /* For each row of a_block */

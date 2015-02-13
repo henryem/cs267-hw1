@@ -104,7 +104,7 @@ int main (int argc, char **argv)
     // 319, 320, 321, 417, 479, 480, 511, 512, 639, 640, 767, 768, 769 };
 
   /* Simple test cases. */
-    {1024};
+    {512};
 
   int nsizes = sizeof(test_sizes)/sizeof(test_sizes[0]);
 
