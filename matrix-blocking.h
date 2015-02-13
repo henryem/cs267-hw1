@@ -28,6 +28,16 @@ square_mat_square_block* square_mat_square_block_new(int block_size, int block_r
 
 square_mat_square_block* trivial_block(square_matrix_storage_format* format);
 
+/* Make @next_b into a subblock of @b.  It is assumed that we are dividing
+ * b into subblock_count^2 blocks, and we want subblock (subblock_row_idx, subblock_col_idx)
+ * in that collection of subblocks.
+ * @param subblock_count must be a divisor of b->block_size.
+ * 
+ * Similar to get_subblock, but useful when we care about performance and we
+ * already have a block object available for mutation.
+ */
+void set_subblock(square_mat_square_block* next_b, square_mat_square_block* b, int subblock_count, int subblock_row_idx, int subblock_col_idx);
+
 /* Get a subblock of some existing block.  It is assumed that we are dividing
  * b into subblock_count^2 blocks, and we want subblock (subblock_row_idx, subblock_col_idx)
  * in that collection of subblocks.

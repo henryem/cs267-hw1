@@ -18,11 +18,11 @@ square_matrix_storage_format* square_matrix_storage_format_new(int matrix_size, 
   return f;
 }
 
-int num_elements(square_matrix_storage_format* format) {
+inline int num_elements(square_matrix_storage_format* format) {
   return format->matrix_size * format->matrix_size;
 }
 
-int block_count(square_matrix_storage_format* format) {
+inline int block_count(square_matrix_storage_format* format) {
   if (format->strategy != BLOCK) {
     return 0;
   }
@@ -55,17 +55,17 @@ double* to_format(double* original, square_matrix_storage_format* original_forma
 }
 
 /* Copy entries from @from to @to, respecting the formats of both.  It is
- * assumed that @from_format and @to_format are of the same size.
+ * assumed that @source_format and @target_format are of the same size.
  */
-void copy_to_format(double* from, square_matrix_storage_format* from_format, double* to, square_matrix_storage_format* to_format) {
+void copy_to_format(double* from, square_matrix_storage_format* source_format, double* to, square_matrix_storage_format* target_format) {
   //TODO: Implemented simply but inefficiently for now.  Could be more
   // locality-aware.  Optimize if this is a bottleneck.
-  // printf("copy_to_format from_format->matrix_size=%d, from_format->strategy=%d, from_format->block_size=%d, to_format->matrix_size=%d, to_format->strategy=%d, to_format->block_size=%d\n", from_format->matrix_size, from_format->strategy, from_format->block_size, to_format->matrix_size, to_format->strategy, to_format->block_size);
-  int matrix_size = from_format->matrix_size;
+  // printf("copy_to_format source_format->matrix_size=%d, source_format->strategy=%d, source_format->block_size=%d, target_format->matrix_size=%d, target_format->strategy=%d, target_format->block_size=%d\n", source_format->matrix_size, source_format->strategy, source_format->block_size, target_format->matrix_size, target_format->strategy, target_format->block_size);
+  int matrix_size = source_format->matrix_size;
   for (int col_idx = 0; col_idx < matrix_size; col_idx++) {
     for (int row_idx = 0; row_idx < matrix_size; row_idx++) {
-      int to_idx = get_index(to_format, row_idx, col_idx);
-      int from_idx = get_index(from_format, row_idx, col_idx);
+      int to_idx = get_index(target_format, row_idx, col_idx);
+      int from_idx = get_index(source_format, row_idx, col_idx);
       to[to_idx] = from[from_idx];
     }
   }
@@ -73,31 +73,30 @@ void copy_to_format(double* from, square_matrix_storage_format* from_format, dou
 
 inline int get_index(square_matrix_storage_format* f, int row_idx, int col_idx) {
   // Poor man's polymorphism.
-  switch (f->strategy) {
-    case COLUMN_MAJOR: {
-      return row_idx + col_idx*f->matrix_size;
-    }
-    case BLOCK: {
-      // Blocks are stored in column-major format, and the elements of blocks
-      // are also stored in column-major format.
-      int block_size = f->block_size;
-      int num_elements_in_block = block_size * block_size;
-      // The number of blocks on an edge of the matrix (so the total number of
-      // blocks is block_count^2).  It is assumed that the block size evenly
-      // divides the matrix size.
-      int block_count = f->matrix_size / block_size;
-      // The block indices of the block in which our element lives.
-      int block_col_idx = col_idx / block_size;
-      int block_row_idx = row_idx / block_size;
-      // The indices of our element within its block.
-      int col_in_block_idx = col_idx % block_size;
-      int row_in_block_idx = row_idx % block_size;
-      // The vectorized index of the first element in the block.
-      int block_start_idx = num_elements_in_block*(block_row_idx + block_col_idx*block_count);
-      // Now we can find our element in this block.  Again, the elements within
-      // a block are stored in column-major order.
-      return block_start_idx + row_in_block_idx + col_in_block_idx*block_size;
-    }
+  if(f->strategy == COLUMN_MAJOR) {
+    return row_idx + col_idx*f->matrix_size;
+  } else {
+    //HACK: Else the strategy is assumed to be BLOCK.  Avoiding a case/switch
+    // here might improve performance.
+    // Blocks are stored in column-major format, and the elements of blocks
+    // are also stored in column-major format.
+    int block_size = f->block_size;
+    int num_elements_in_block = block_size * block_size;
+    // The number of blocks on an edge of the matrix (so the total number of
+    // blocks is block_count^2).  It is assumed that the block size evenly
+    // divides the matrix size.
+    int block_count = f->matrix_size / block_size;
+    // The block indices of the block in which our element lives.
+    int block_col_idx = col_idx / block_size;
+    int block_row_idx = row_idx / block_size;
+    // The indices of our element within its block.
+    int col_in_block_idx = col_idx % block_size;
+    int row_in_block_idx = row_idx % block_size;
+    // The vectorized index of the first element in the block.
+    int block_start_idx = num_elements_in_block*(block_row_idx + block_col_idx*block_count);
+    // Now we can find our element in this block.  Again, the elements within
+    // a block are stored in column-major order.
+    return block_start_idx + row_in_block_idx + col_in_block_idx*block_size;
   }
 }
 

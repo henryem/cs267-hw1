@@ -16,7 +16,7 @@ const char* dgemm_desc = "Blocked dgemm with optimizations.";
 
 const int NUM_LEVELS = 1;
 //FIXME
-const int BLOCK_COUNTS[] = {64};
+const int BLOCK_COUNTS[] = {8, 32};
 
 // Things to try:
 //  * Load (or cache) the matrix in block format.  It would be interesting to
@@ -59,10 +59,8 @@ int smallest_block_size(dgemm_square_block_strategy* strategy, int matrix_size) 
  * @param A is the whole matrix, in which @a_block references a single block.
  *   The same is true for @B.  @C is assumed to share a format with @A.
  */
-static void do_block (double* A, square_mat_square_block* a_block, double* B, square_mat_square_block* b_block, double* C) {
+static void do_block (double* A, square_mat_square_block* a_block, double* B, square_mat_square_block* b_block, double* C, square_mat_square_block* c_block) {
   int block_size = a_block->block_size;
-  //FIXME: We assume C has the same format as A.
-  square_mat_square_block* c_block = square_mat_square_block_new(block_size, a_block->block_row_idx, b_block->block_col_idx, a_block->format);
   /* For each row of block a_block: */
   for (int a_row_idx = 0; a_row_idx < block_size; a_row_idx++) {
     /* For each column of block b_block: */
@@ -91,32 +89,61 @@ static void do_block (double* A, square_mat_square_block* a_block, double* B, sq
  */
 static void recursive_block_dgemm(
     double* A,
-    square_mat_square_block* a_block,
+    square_mat_square_block* a_blocks,
     double* B,
-    square_mat_square_block* b_block,
+    square_mat_square_block* b_blocks,
     double* C,
+    square_mat_square_block* c_block,
     dgemm_square_block_strategy* strategy,
     int level) {
   // printf("recursive_block_dgemm at level %d\n", level);
+  square_mat_square_block* a_block = a_blocks + level;
+  square_mat_square_block* b_block = b_blocks + level;
   if (level == 0) {
-    do_block(A, a_block, B, b_block, C);
+    c_block->block_row_idx = a_block->block_row_idx;
+    c_block->block_col_idx = b_block->block_col_idx;
+    do_block(A, a_block, B, b_block, C, c_block);
   } else {  
     int block_count = strategy->block_counts[level-1];
+    square_mat_square_block* next_a_block = a_blocks + (level-1);
+    square_mat_square_block* next_b_block = b_blocks + (level-1);
     /* For each block-row of A */ 
     for (int a_row_idx = 0; a_row_idx < block_count; a_row_idx++) {
       /* For each block-column of B */
       for (int b_col_idx = 0; b_col_idx < block_count; b_col_idx++) {
         /* Accumulate block dgemms into block of C */
         for (int inner_idx = 0; inner_idx < block_count; inner_idx++) {
-          square_mat_square_block* a_subblock = get_subblock(a_block, block_count, a_row_idx, inner_idx);
-          square_mat_square_block* b_subblock = get_subblock(b_block, block_count, inner_idx, b_col_idx);
-          recursive_block_dgemm(A, a_subblock, B, b_subblock, C, strategy, level-1);
-          free(a_subblock);
-          free(b_subblock);
+          // Set indices in next_a_block and next_b_block to the indices of the
+          // subblocks.  We construct a fixed list of block objects and then
+          // modify them in-place here.  This is tricky, but it avoids
+          // constructing objects here, which turns out to be too expensive.
+          set_subblock(next_a_block, a_block, block_count, a_row_idx, inner_idx);
+          set_subblock(next_b_block, b_block, block_count, inner_idx, b_col_idx);
+          recursive_block_dgemm(A, a_blocks, B, b_blocks, C, c_block, strategy, level-1);
         }
       }
     }
   }
+}
+
+square_mat_square_block* make_blocks_for_strategy(dgemm_square_block_strategy* s, square_matrix_storage_format* f) {
+  square_mat_square_block* blocks = malloc((s->num_levels+1)*sizeof(square_mat_square_block));
+  int current_block_size = f->matrix_size;
+  for (int level = s->num_levels; level >= 0; level--) {
+    blocks[level].block_size = current_block_size;
+    blocks[level].block_row_idx = 0;
+    blocks[level].block_col_idx = 0;
+    blocks[level].format = f;
+    //FIXME: Assumes aligned blocks.
+    if (level > 0) {
+      current_block_size /= s->block_counts[level-1];
+    }
+  }
+  return blocks;
+}
+
+square_mat_square_block* make_smallest_block_for_strategy(dgemm_square_block_strategy* s, square_matrix_storage_format* f) {
+  return square_mat_square_block_new(smallest_block_size(s, f->matrix_size), 0, 0, f);
 }
 
 static dgemm_square_block_strategy* get_static_strategy(int matrix_size) {
@@ -128,7 +155,6 @@ void square_dgemm_with_strategy(int matrix_size, double* A, double* B, double* C
   matrix_storage_strategy storage_strategy = BLOCK;
   int storage_block_size = smallest_block_size(dgemm_strategy, matrix_size);
   square_matrix_storage_format* new_format = square_matrix_storage_format_new(matrix_size, storage_strategy, storage_block_size);
-  printf("New format: new_format->block_size=%d\n", new_format->block_size);
   
   // Copy each matrix into block format.
   // printf("Copying matrices to block format.\n");
@@ -139,15 +165,18 @@ void square_dgemm_with_strategy(int matrix_size, double* A, double* B, double* C
   
   // Do the matrix multiply, storing the result in formatted_c.
   // printf("Starting recursive_block_dgemm with %d levels\n", dgemm_strategy->num_levels);
-  square_mat_square_block* starting_block_a = trivial_block(new_format);
-  square_mat_square_block* starting_block_b = trivial_block(new_format);
-  recursive_block_dgemm(formatted_a, starting_block_a, formatted_b, starting_block_b, formatted_c, dgemm_strategy, dgemm_strategy->num_levels);
+  square_mat_square_block* a_blocks = make_blocks_for_strategy(dgemm_strategy, new_format);
+  square_mat_square_block* b_blocks = make_blocks_for_strategy(dgemm_strategy, new_format);
+  square_mat_square_block* c_block = make_smallest_block_for_strategy(dgemm_strategy, new_format);
+  
+  recursive_block_dgemm(formatted_a, a_blocks, formatted_b, b_blocks, formatted_c, c_block, dgemm_strategy, dgemm_strategy->num_levels);
   
   // Copy the result back to C.
   copy_to_format(formatted_c, new_format, C, original_format);
   
-  free(starting_block_a);
-  free(starting_block_b);
+  free(a_blocks);
+  free(b_blocks);
+  free(c_block);
   free(original_format);
   free(new_format);
   free(formatted_a);

@@ -50,14 +50,14 @@ benchmark-blocked-baseline : benchmark.o dgemm-blocked-baseline.o
 benchmark-blas : benchmark.o dgemm-blas.o
 	$(CC) -o $@ $^ $(LDLIBS)
 benchmark-blocked : benchmark.o dgemm-blocked.o matrix-blocking.o matrix-storage.o
-	$(CC) -pg -g -o $@ $^ $(LDLIBS)
+	$(CC) -o $@ $^ $(LDLIBS)
 test-blocked : dgemm-tests.o unit-test-framework.o dgemm-blocked.o matrix-blocking.o matrix-storage.o
 	$(CC) -o $@ $^ $(LDLIBS)
 benchmark-simd : benchmark.o dgemm-simd.o
 	$(CC) -DCLS=$(getconf LEVEL1_DCACHE_LINESIZE) -O3 -o $@ $^ $(LDLIBS)
 
 %.o : %.c
-	$(CC) -pg -g -c $(CFLAGS) $<
+	$(CC) -c $(CFLAGS) $<
 
 .PHONY : clean
 clean:
