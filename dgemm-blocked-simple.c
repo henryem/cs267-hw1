@@ -8,6 +8,10 @@ const char* dgemm_desc = "One-level blocked dgemm with optimizations.";
 #define BLOCK_SIZE 8
 #endif
 
+#if !defined(SIMD_VECTOR_SIZE)
+#define SIMD_VECTOR_SIZE 8
+#endif
+
 #define min(a,b) (((a)<(b))?(a):(b))
 
 /* This auxiliary subroutine performs a smaller dgemm operation
@@ -17,7 +21,7 @@ const char* dgemm_desc = "One-level blocked dgemm with optimizations.";
  * major, and c_block in column-major, all with block size block_size.
  */
 static void do_block(int block_size, double* a_block, double* b_block, double* c_block) {
-  /* For each column of b_block */ 
+  /* For each column of b_block */
   for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
     double* b_col = b_block + b_col_idx*block_size;
     double* c_col = c_block + b_col_idx*block_size;
@@ -28,6 +32,36 @@ static void do_block(int block_size, double* a_block, double* b_block, double* c
       double running_sum = 0.0;
       for (int inner_idx = 0; inner_idx < block_size; inner_idx++) {
 	      running_sum += a_row[inner_idx] * b_col[inner_idx];
+      }
+      c_col[a_row_idx] += running_sum;
+    }
+  }
+}
+
+/* As do_block, but with performance optimizations.  Since we want the compiler
+ * to optimize an inner loop here, the block size must divide the size of the
+ * inner loop.  For now there is only 1 inner loop size: SIMD_VECTOR_SIZE.
+ */
+static void do_block_with_autovectorization(int block_size, double* a_block, double* b_block, double* c_block) {
+  assert(block_size % SIMD_VECTOR_SIZE == 0);
+  int num_subvectors = block_size / SIMD_VECTOR_SIZE;
+  /* For each column of b_block */ 
+  for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
+    double* b_col = b_block + b_col_idx*block_size;
+    double* c_col = c_block + b_col_idx*block_size;
+    /* For each row of a_block */
+    for (int a_row_idx = 0; a_row_idx < block_size; a_row_idx++) {
+      /* Compute the inner product and increment c_block[a_row_idx,b_col_idx].
+       * To get autovectorization to work, we divide the inner product into
+       * a sum of inner products of vectors of size SIMD_VECTOR_SIZE.
+       */
+      double* a_row = a_block + a_row_idx*block_size;
+      double running_sum = 0.0;
+      for (int subvector_idx = 0; subvector_idx < num_subvectors; subvector_idx++) {
+        // The following loop is supposed to be autovectorized:
+        for (int inner_idx = subvector_idx*SIMD_VECTOR_SIZE; inner_idx < (subvector_idx+1)*SIMD_VECTOR_SIZE; inner_idx++) {
+          running_sum += a_row[inner_idx] * b_col[inner_idx];
+        }
       }
       c_col[a_row_idx] += running_sum;
     }
