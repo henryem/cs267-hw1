@@ -132,7 +132,11 @@ static void do_full_dgemm(double* A, square_matrix_storage_format* a_format, dou
         double* block_pointer_in_b = B + b_block_first_element_raw_idx;
         // We already calculated the pointer for C, since the target block in C
         // doesn't change through this inner loop.
-        do_block(block_size, block_pointer_in_a, block_pointer_in_b, block_pointer_in_c);
+        if (block_size % SIMD_VECTOR_SIZE == 0) {
+          do_block_with_autovectorization(block_size, block_pointer_in_a, block_pointer_in_b, block_pointer_in_c);
+        } else {
+          do_block(block_size, block_pointer_in_a, block_pointer_in_b, block_pointer_in_c);
+        }
       }
     }
   }
