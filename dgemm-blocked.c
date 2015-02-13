@@ -14,21 +14,9 @@ const char* dgemm_desc = "Blocked dgemm with optimizations.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
-const int NUM_LEVELS = 1;
+const int NUM_LEVELS = 2;
 //FIXME
 const int BLOCK_COUNTS[] = {8, 32};
-
-// Things to try:
-//  * Load (or cache) the matrix in block format.  It would be interesting to
-//    preload the matrix this way to see what the maximum performance gain is.
-//  * Use vectorized ops for the blocks.
-//  * Optimize the block strategy for laptop and Hopper.  Probably want to
-//    report numbers for the whole parameter space.
-
-// Questions:
-//  * What is the best way to use different algorithm strategies?  Putting
-//    conditionals everywhere may impact performance.  Perhaps the impact is
-//    minimal if the strategies are high-level.
 
 dgemm_square_block_strategy* dgemm_square_block_strategy_new(int num_levels, const int *block_counts) {
   dgemm_square_block_strategy* s = malloc(sizeof(dgemm_square_block_strategy));
@@ -151,10 +139,11 @@ static dgemm_square_block_strategy* get_static_strategy(int matrix_size) {
 }
 
 void square_dgemm_with_strategy(int matrix_size, double* A, double* B, double* C, dgemm_square_block_strategy* dgemm_strategy) {
+  //FIXME: Do padding.
+  
   // Determine the storage strategy to be used for the matrices.
-  matrix_storage_strategy storage_strategy = BLOCK;
   int storage_block_size = smallest_block_size(dgemm_strategy, matrix_size);
-  square_matrix_storage_format* new_format = square_matrix_storage_format_new(matrix_size, storage_strategy, storage_block_size);
+  square_matrix_storage_format* new_format = square_matrix_storage_format_new(matrix_size, BLOCK_CM, storage_block_size);
   
   // Copy each matrix into block format.
   // printf("Copying matrices to block format.\n");

@@ -8,18 +8,28 @@
 
 #include "unit-test-framework.h"
 
-/* A simple unit test framework.  Returns NULL if there is no assertion
- * failure, and otherwise a char* with an error message.
+// A simple unit testing framework.
+// Note: Currently all assertion messages leak.  Not being an expert C hacker,
+// I don't know a clean way to fix this.  Small memory leaks in tests seem
+// okay, though.
+
+/* Returns NULL if there is no assertion failure, and otherwise a char* with an
+ * error message.
  */
 char* assert_that(bool assertion, char* assertion_message) {
   if (!assertion) {
     char* error_msg;
     asprintf(&error_msg, "Expected that %s, but that wasn't true!", assertion_message);
-    free(assertion_message);
     return error_msg;
   } else {
     return NULL;
   }
+}
+
+char* assert_int_equals(int actual, int expected, char* name) {
+  char* assertion_message;
+  asprintf(&assertion_message, "%s equals %d (actual value: %d)", name, expected, actual);
+  return assert_that(actual == expected, assertion_message);
 }
 
 char* both(char* assertion_1, char* assertion_2) {
@@ -30,8 +40,6 @@ char* both(char* assertion_1, char* assertion_2) {
   } else {
     char* new_error_message;
     asprintf(&new_error_message, "%s\n[and] %s", assertion_1, assertion_2);
-    free(assertion_1);
-    free(assertion_2);
     return new_error_message;
   }
 }
@@ -56,12 +64,10 @@ void run_tests(bool verbose, test_definition** tests) {
     char* error_msg = test_func();
     if (NULL != error_msg) {
       printf("Test \"%s\" failed with message \"%s\".\n", test_name, error_msg);
-      free(error_msg);
       num_failures++;
     } else {
       num_successes++;
     }
-    free(test_handle);
   }
   if (num_failures > 0) {
     printf("Some tests failed!  There were %d successes and %d failures.\n", num_successes, num_failures);

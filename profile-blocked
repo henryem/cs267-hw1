@@ -1,0 +1,12 @@
+export TEST_COUNT=$((TEST_COUNT+1))
+echo "Running test ${TEST_COUNT}."
+make UBUNTU=1 PROFILE=1
+TEST_DIR=benchmark-blocked-021215_$TEST_COUNT
+mkdir -p $TEST_DIR
+cp *.o $TEST_DIR
+cp benchmark-blocked $TEST_DIR
+./benchmark-blocked > $TEST_DIR/benchmark-results.out
+cp gmon.out $TEST_DIR
+cd $TEST_DIR
+gprof benchmark-blocked > gprof.out
+cd ..

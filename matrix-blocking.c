@@ -4,7 +4,7 @@
 #include "matrix-storage.h"
 
 square_mat_square_block* square_mat_square_block_new(int block_size, int block_row_idx, int block_col_idx, square_matrix_storage_format* format) {
-  assert(format->strategy == BLOCK);
+  assert(format->strategy == BLOCK_CM);
   assert(block_size > 0);
   assert(block_row_idx >= 0);
   assert(block_row_idx < block_count(format));

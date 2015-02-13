@@ -1,7 +1,11 @@
 #ifndef _unit_test_framework_h
 #define _unit_test_framework_h
 
+#include <stdbool.h>
+
 char* assert_that(bool assertion, char* assertion_message);
+
+char* assert_int_equals(int a, int b, char* name);
 
 char* both(char* assertion_1, char* assertion_2);
 
