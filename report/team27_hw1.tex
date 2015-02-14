@@ -1,0 +1,146 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb}
+\usepackage[retainorgcmds]{IEEEtrantools}
+\usepackage{filecontents}
+\usepackage{hyperref}
+\author{Derek Kuo, Henry Milner}
+\title{CS267 HW1}
+\date{2/13/15}
+
+% Some convenience functions for homework problems.
+\newcommand{\problem}[1]%
+  {\section*{#1.}}
+
+\newcommand{\problemSubpart}[1]%
+  {\noindent\emph{#1.}}
+
+\newcommand{\problemNamedSubpart}[1]%
+  {\noindent\emph{#1}}
+
+% Some convenience functions for note-taking.
+\newcommand{\topic}[1]%
+  {\section*{#1}}
+
+% Some functions for general use.
+
+\def\seqn#1\eeqn{\begin{align}#1\end{align}}
+
+\newcommand{\vecName}[1]%
+  {\boldsymbol{#1}}
+
+\newcommand{\io}%
+  {\text{ i.o. }}
+
+\newcommand{\eventually}%
+  {\text{ eventually }}
+
+\newcommand{\tr}%
+  {\text{tr}}
+
+\newcommand{\Cov}%
+  {\text{Cov}}
+
+\newcommand{\adj}%
+  {\text{adj}}
+
+\newcommand{\funcName}[1]%
+  {\text{#1}}
+
+\newcommand{\hasDist}%
+  {\sim}
+
+\DeclareMathOperator*{\E}%
+  {\mathbb{E}}
+
+\newcommand{\Var}%
+  {\text{Var}}
+
+\newcommand{\std}%
+  {\text{std}}
+
+\newcommand{\grad}%
+  {\nabla}
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\newcommand{\inprod}[2]%
+  {\langle #1, #2 \rangle}
+
+\newcommand{\dd}[1]%
+  {\frac{\delta}{\delta#1}}
+
+\newcommand{\Reals}%
+  {\mathbb{R}}
+
+\newcommand{\indep}%
+  {\protect\mathpalette{\protect\independenT}{\perp}} \def\independenT#1#2{\mathrel{\rlap{$#1#2$}\mkern2mu{#1#2}}}
+
+\newcommand{\defeq}%
+  {\buildrel\triangle\over =}
+
+\newcommand{\defn}[1]%
+  {\emph{Definition: #1}\\}
+
+\newcommand{\example}[1]%
+  {\emph{Example: #1}\\}
+
+\newcommand{\figref}[1]%
+  {\figurename~\ref{#1}}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newenvironment{proof}[1][Proof]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}]}{\end{trivlist}}
+
+\begin{filecontents}{\jobname.bib}
+%@book{foo
+%}
+\end{filecontents}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+In this report, we describe a series of implementations of matrix multiplication.  First we discuss the optimizations we implemented, then we report results for each optimization, and finally we discuss the outcomes.
+
+\section{Optimizations}
+\subsection{SIMD}
+We wrote a manual vectorized implementation of DGEMM using SIMD instructions. We will refer to this algorithm as SIMPLE-SIMD. To be specific, we use \_mm\_load\_sd, \_mm\_loadu\_pd, \_mm\_unpacklo\_pd, \_mm\_storeu\_pd, \_mm\_add\_pd, \_mm\_mul\_pd instructions to handle both aligned memory blocks and unaligned memory blocks. 
+
+\subsubsection {Dynamic block size}
+Based on different input size, we decided the block size dynamically. We found that in order to achieve the best performance, the optimal block size should be greater than 8 and smaller than 16. Our algorithm also allows to handle arbitrate matrix size based on adjustment techniques below.
+
+\subsubsection {Correction for inner block: account for outlier region}
+After calculating the result using the SIMD within the block, we need to adjust the result by considering rows and columns outside the blocks.
+
+\subsubsection {Calculation for outlier: naive method is best for small size}
+We also implement our function to handle outlier (the region can't be included in a given block size). We use the naive matrix multiplication which is simple and best for small size region.
+
+\subsection{Multi-level Blocking}
+We also implemented a multi-level block algorithm, which divides the input matrices recursively into smaller blocks.  We will refer to this algorithm as MULTI.  MULTI takes as input a blocking strategy consisting of 0 or more nested block sizes.  It first copies the three input matrices into a column-major block format, with a block size equal to the block size at the lowest level of the given strategy.  (If this block size is not a divisor of the input matrix size, the copies are padded with extra 0s to ensure that this is so.)  It then recursively performs the naive block-multiplication algorithm.  Finally, the output matrix is copied back to the output memory location, in column major format.
+
+Our implementation of MULTI performs extremely poorly compared to SIMPLE-SIMD.  (We have not reported performance numbers; the average efficiency is less than 1\%!)  We suspect that the poor performance was due to the complicated indexing scheme necessitated by multi-level blocking; we used several conditionals and arithmetic operations to find the physical location of each matrix element.  We tried to use gprof to find the actual source of the performance problem, but it produced nonsensical results.  Due to time constraints, we did not pursue this algorithm further.
+
+\subsection{Single-level Blocking}
+We implemented a simple one-level block algorithm, which we will refer to as BLOCK. BLOCK first copies the three input matrices A, B, and C into block-row-major, block-column-major, and block-column-major formats, respectively.  (By ``block-row-major'' we mean that both the blocks and the elements within each block are stored in row-major format.)  With A and B in this format, operations on blocks simply involve dot products of contiguous memory.  We used SIMD intrinsics to optimize these dot products.
+
+
+\subsection{Hyperparameter Tuning}
+Table XXX lists the hyperparameter spaces that the above algorithms introduce.  We optimized over the product space on the Hopper machines and on the laptop machine by an exhaustive search over a small subset of the (infinite) parameter space.  Hyperparameter tuning was important for performance.  Table YYY in Section \ref{sec:results} lists the worst, median, and best performance among members of the search space for several problem sizes.
+
+\section{Results}
+\label{sec:results}
+
+\section{Discussion}
+\subsection {Performance Variation on Different Machines}
+We observed that there are huge performance gap between our local machine and hopper. For our fastest SIMD code, on our laptop the code can achieve 50\% CPU utilization rate in average. However on Hopper it can only run on 16\%-18\% in average.
+\subsection {Performance Dips On Specific Matrix Size}
+As discussed in 2.1.1, our performance depended largely on the default block size. If a certain matrix size N is assigned (ex. N = 2\^n - 1 for n=1,2,3,...), our algorithm will allocate a smaller block size which will reduce the performance by 5\% to 10\%.
+
+
+%\bibliographystyle{plain}
+%\bibliography{\jobname}
+
+\end{document}
