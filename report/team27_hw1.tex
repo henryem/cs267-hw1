@@ -107,31 +107,31 @@ In this report, we describe a series of implementations of matrix multiplication
 
 \section{Optimizations}
 \subsection{SIMD}
-We wrote a manual vectorized implementation of DGEMM using SIMD instructions. We will refer to this algorithm as SIMPLE-SIMD. To be specific, we use \_mm\_load\_sd, \_mm\_loadu\_pd, \_mm\_unpacklo\_pd, \_mm\_storeu\_pd, \_mm\_add\_pd, \_mm\_mul\_pd instructions to handle both aligned memory blocks and unaligned memory blocks. 
-
-\subsubsection {Dynamic block size}
-Based on different input size, we decided the block size dynamically. We found that in order to achieve the best performance, the optimal block size should be greater than 8 and smaller than 16. Our algorithm also allows to handle arbitrate matrix size based on adjustment techniques below.
-
-\subsubsection {Correction for inner block: account for outlier region}
-After calculating the result using the SIMD within the block, we need to adjust the result by considering rows and columns outside the blocks.
-
-\subsubsection {Calculation for outlier: naive method is best for small size}
-We also implement our function to handle outlier (the region can't be included in a given block size). We use the naive matrix multiplication which is simple and best for small size region.
+We wrote a manual vectorized implementation of DGEMM using SIMD instructions and a single level of blocking. We will refer to this algorithm as SIMPLE-SIMD. To be specific, we use \_mm\_load\_sd, \_mm\_loadu\_pd, \_mm\_unpacklo\_pd, \_mm\_storeu\_pd, \_mm\_add\_pd, \_mm\_mul\_pd instructions to handle both aligned memory blocks and unaligned memory blocks.  When the block size does not divide the matrix size, we fall back to the naive multiplication algorithm for the uneven edge regions; this leads to simple code and does not sacrifice much in performance.
 
 \subsection{Multi-level Blocking}
 We also implemented a multi-level block algorithm, which divides the input matrices recursively into smaller blocks.  We will refer to this algorithm as MULTI.  MULTI takes as input a blocking strategy consisting of 0 or more nested block sizes.  It first copies the three input matrices into a column-major block format, with a block size equal to the block size at the lowest level of the given strategy.  (If this block size is not a divisor of the input matrix size, the copies are padded with extra 0s to ensure that this is so.)  It then recursively performs the naive block-multiplication algorithm.  Finally, the output matrix is copied back to the output memory location, in column major format.
 
 Our implementation of MULTI performs extremely poorly compared to SIMPLE-SIMD.  (We have not reported performance numbers; the average efficiency is less than 1\%!)  We suspect that the poor performance was due to the complicated indexing scheme necessitated by multi-level blocking; we used several conditionals and arithmetic operations to find the physical location of each matrix element.  We tried to use gprof to find the actual source of the performance problem, but it produced nonsensical results.  Due to time constraints, we did not pursue this algorithm further.
 
-\subsection{Single-level Blocking}
-We implemented a simple one-level block algorithm, which we will refer to as BLOCK. BLOCK first copies the three input matrices A, B, and C into block-row-major, block-column-major, and block-column-major formats, respectively.  (By ``block-row-major'' we mean that both the blocks and the elements within each block are stored in row-major format.)  With A and B in this format, operations on blocks simply involve dot products of contiguous memory.  We used SIMD intrinsics to optimize these dot products.
+\subsection{Block-Aware Storage}
+We implemented another one-level block algorithm, which we will refer to as BLOCK. Unlike SIMPLE-SIMD, BLOCK first copies the three input matrices A, B, and C into block-row-major, block-column-major, and block-column-major formats, respectively.  (By ``block-row-major'' we mean that both the blocks and the elements within each block are stored in row-major format.)  With A and B in this format, operations on blocks simply involve dot products of contiguous memory.  We used SIMD intrinsics to optimize these dot products.  The resulting code is quite simple.  This carried two practical advantages:
+\begin{enumerate}
+  \item Since it controls memory allocation for the blocks it operates on, BLOCK avoids special cases when memory is not double-aligned or when the block size does not divide the matrix size.  In the latter case, we pad the matrix with extra zeroes while performing the copy.
+  \item It is straightforward to change the block size.  This allowed us to optimize more readily over block sizes in BLOCK.
+\end{enumerate}
 
-
-\subsection{Hyperparameter Tuning}
-Table XXX lists the hyperparameter spaces that the above algorithms introduce.  We optimized over the product space on the Hopper machines and on the laptop machine by an exhaustive search over a small subset of the (infinite) parameter space.  Hyperparameter tuning was important for performance.  Table YYY in Section \ref{sec:results} lists the worst, median, and best performance among members of the search space for several problem sizes.
+The copying step introduces additional overhead not incurred by SIMPLE-SIMD, so BLOCK ought to perform relatively poorly for small matrix sizes.  For large matrix sizes, the $O(n^3)$ multiply operation dominates the $O(n^2)$ copy operations, and copying becomes theoretically interesting if, for example, it speeds up multiplication by a constant factor.  In the next section we will see that these predictions hold true.
 
 \section{Results}
 \label{sec:results}
+Figure \ref{fig:perf-hopper} displays our main performance results, running BLOCK and SIMPLE-SIMD on Hopper.  
+
+
+
+\subsection{Performance on a laptop}
+
+\subsection{Copy overhead of BLOCK}
 
 \section{Discussion}
 \subsection {Performance Variation on Different Machines}

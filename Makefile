@@ -41,7 +41,7 @@ LDFLAGS = -Wall
 
 OWN_LIBS = unit-test-framework.o matrix-blocking.o matrix-storage.o
 
-targets = benchmark-naive benchmark-blocked-baseline benchmark-blas benchmark-simd benchmark-blocked-simple test-blocked-multi test-blocked-simple
+targets = benchmark-naive benchmark-blocked benchmark-blocked-baseline benchmark-blas benchmark-simd benchmark-blocked-simple test-blocked-multi test-blocked-simple
 objects = benchmark.o $(OWN_LIBS) dgemm-blocked-multi-tests.o dgemm-blocked-simple-tests.o dgemm-naive.o dgemm-blocked-baseline.o dgemm-blas.o dgemm-blocked-multi.o dgemm-simd.o dgemm-blocked-simple.o
 
 .PHONY : default
@@ -52,6 +52,8 @@ all : clean $(targets)
 
 benchmark-naive : benchmark.o dgemm-naive.o 
 	$(CC) -o $@ $^ $(LDLIBS)
+benchmark-blocked : benchmark.o dgemm-blocked.o
+	$(CC) -DCLS=$(getconf LEVEL1_DCACHE_LINESIZE) -O3 -o $@ $^ $(LDLIBS)
 benchmark-blocked-baseline : benchmark.o dgemm-blocked-baseline.o
 	$(CC) -o $@ $^ $(LDLIBS)
 benchmark-blas : benchmark.o dgemm-blas.o
