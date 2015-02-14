@@ -25,9 +25,9 @@ ifdef PROFILE
 endif
 
 ifdef NO_OPT
-  OPTIMIZATION = -msse4.1 -O0
+  OPTIMIZATION = -O0
 else  
-  OPTIMIZATION = -msse4.1 -O3
+  OPTIMIZATION = -O3
 endif
 
 OPT = $(INSTRUMENTATION) $(OPTIMIZATION)

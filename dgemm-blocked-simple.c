@@ -1,16 +1,17 @@
 #include <assert.h>
-#include <smmintrin.h>
+#include <pmmintrin.h>
+#include <emmintrin.h>
 
 #include "matrix-storage.h"
 
 const char* dgemm_desc = "One-level blocked dgemm with optimizations.";
 
 #if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE 64
+#define BLOCK_SIZE 32
 #endif
 
 #if !defined(SIMD_VECTOR_SIZE)
-#define SIMD_VECTOR_SIZE 8
+#define SIMD_VECTOR_SIZE 2
 #endif
 
 #define min(a,b) (((a)<(b))?(a):(b))
@@ -57,24 +58,17 @@ static void do_block_with_simd(int block_size, double* a_block, double* b_block,
        * size SIMD_VECTOR_SIZE, to make the problem amenable to SIMD.
        */
       double *restrict a_row = a_block + a_row_idx*block_size;
+      // running_sum[0] stores the current value in c, plus the dot product of
+      // half the elements.  running_sum[1] stores the dot product of the other
+      // half.
       register __m128d running_sum = _mm_load_sd(c_col + a_row_idx);
       for (int subvector_idx = 0; subvector_idx < num_subvectors; subvector_idx++) {
         // Load elements of a_row and b_col:
-        __m128d a_elts0 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE);
-        __m128d a_elts1 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE + 2);
-        __m128d a_elts2 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE + 4);
-        __m128d a_elts3 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE + 6);
-        __m128d b_elts0 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE);
-        __m128d b_elts1 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE + 2);
-        __m128d b_elts2 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE + 4);
-        __m128d b_elts3 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE + 6);
-        __m128d dot_product0 = _mm_dp_pd(a_elts0, b_elts0, 0xff);
-        __m128d dot_product1 = _mm_dp_pd(a_elts1, b_elts1, 0xff);
-        __m128d dot_product2 = _mm_dp_pd(a_elts2, b_elts2, 0xff);
-        __m128d dot_product3 = _mm_dp_pd(a_elts3, b_elts3, 0xff);
-        running_sum = _mm_add_sd(_mm_add_sd(_mm_add_sd(_mm_add_sd(running_sum, dot_product0), dot_product1), dot_product2), dot_product3);
+        __m128d a_elts = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE);
+        __m128d b_elts = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE);
+        running_sum = _mm_add_pd(running_sum, _mm_mul_pd(a_elts, b_elts));
       }
-      _mm_store_sd(c_col + a_row_idx, running_sum); //FIXME: Not sure this is the right operation.
+      _mm_store_sd(c_col + a_row_idx, _mm_hadd_pd(running_sum, running_sum)); //FIXME: Not sure this is the right operation.
     }
   }
 }
