@@ -1,8 +1,8 @@
 for block_size in 2 4 8 16 32 64 ; do
-  for cheating in 0 1 ; do
-    echo "block_size = ${block_size} ; cheating = ${cheating}"
-    make EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size} -DTEST_INACCURATE_MULTIPLY=${cheating} -DEVEN_TEST_CASES_ONLY=${cheating}" && qsub job-blocked-simple
+  for cheating in 0 ; do
+    echo "block_size = ${block_size}"
+    #make EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size} -DTEST_INACCURATE_MULTIPLY=${cheating} -DEVEN_TEST_CASES_ONLY=${cheating}" && qsub job-blocked-simple
     # On Mac:
-    # make OSX=1 EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size} -DTEST_INACCURATE_MULTIPLY=${cheating} -DEVEN_TEST_CASES_ONLY=${cheating}" && ./benchmark-blocked-simple
+    make OSX=1 EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size} -DTEST_INACCURATE_MULTIPLY=${cheating} -DEVEN_TEST_CASES_ONLY=${cheating}" && ./benchmark-blocked-simple
   done
 done
