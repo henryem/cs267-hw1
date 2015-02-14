@@ -25,6 +25,7 @@ void square_dgemm (int n, double* A, double* B, double* C)
 
   int SM;
 
+
   if (n%16 == 0 || n%16 == 1 || n%16 == 3 || n%16 == 5 || n%16 == 7) SM=16;
   else if (n%14 == 0 || n%14 == 1 || n%14 == 3 || n%14 == 5 || n%14 == 7) SM=14;
   else if (n%12 == 0 || n%12 == 1 || n%12 == 3 || n%12 == 5 || n%12 == 7) SM=12;
