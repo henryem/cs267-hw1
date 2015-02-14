@@ -1,3 +1,5 @@
 for block_size in 2 4 8 16 32 64 ; do
   make EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size} -DTEST_INACCURATE_MULTIPLY=1 -DEVEN_TEST_CASES_ONLY=1" && qsub job-blocked-simple
+  # On Mac:
+  # make OSX=1 EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size} -DTEST_INACCURATE_MULTIPLY=1 -DEVEN_TEST_CASES_ONLY=1" && ./benchmark-blocked-simple
 done
