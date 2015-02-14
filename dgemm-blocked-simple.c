@@ -144,6 +144,21 @@ void square_dgemm_with_block_size(int matrix_size, double* A, double* B, double*
   // representation for block matrices.  This is for the sake of performance.
   assert(matrix_size > 0);
   assert(block_size > 0);
+#ifdef TEST_INACCURATE_MULTIPLY
+  // Test the (incorrect) algorithm without any copying.
+  square_matrix_storage_format* original_format = square_matrix_storage_format_new(matrix_size, COLUMN_MAJOR, 0);
+  square_matrix_storage_format* new_a_format = padded_format(original_format, BLOCK_RM, block_size);
+  square_matrix_storage_format* new_b_format = padded_format(original_format, BLOCK_CM, block_size);
+  square_matrix_storage_format* new_c_format = padded_format(original_format, BLOCK_CM, block_size);
+  
+  // Do the matrix multiply, storing the result in formatted_c.
+  do_full_dgemm(A, new_a_format, B, new_b_format, C, new_c_format);
+  
+  free(original_format);
+  free(new_a_format);
+  free(new_b_format);
+  free(new_c_format);
+#else
   square_matrix_storage_format* original_format = square_matrix_storage_format_new(matrix_size, COLUMN_MAJOR, 0);
   square_matrix_storage_format* new_a_format = padded_format(original_format, BLOCK_RM, block_size);
   square_matrix_storage_format* new_b_format = padded_format(original_format, BLOCK_CM, block_size);
@@ -171,6 +186,7 @@ void square_dgemm_with_block_size(int matrix_size, double* A, double* B, double*
   free(formatted_a);
   free(formatted_b);
   free(formatted_c);
+#endif
 }
 
 /* This routine performs a dgemm operation

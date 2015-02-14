@@ -32,12 +32,16 @@ endif
 
 OPT = $(INSTRUMENTATION) $(OPTIMIZATION)
 
-CFLAGS = -Wall -std=gnu99 $(OPT)
+ifdef EXTERNAL_CFLAGS
+  CFLAGS = -Wall -std=gnu99 $(OPT) $(EXTERNAL_CFLAGS)
+else
+  CFLAGS = -Wall -std=gnu99 $(OPT)
+endif
 LDFLAGS = -Wall
 
 OWN_LIBS = unit-test-framework.o matrix-blocking.o matrix-storage.o
 
-targets = benchmark-naive benchmark-blocked-baseline benchmark-blas benchmark-blocked benchmark-simd benchmark-blocked-simple test-blocked-multi test-blocked-simple
+targets = benchmark-naive benchmark-blocked-baseline benchmark-blas benchmark-simd benchmark-blocked-simple test-blocked-multi test-blocked-simple
 objects = benchmark.o $(OWN_LIBS) dgemm-blocked-multi-tests.o dgemm-blocked-simple-tests.o dgemm-naive.o dgemm-blocked-baseline.o dgemm-blas.o dgemm-blocked-multi.o dgemm-simd.o dgemm-blocked-simple.o
 
 .PHONY : default

@@ -94,8 +94,9 @@ int main (int argc, char **argv)
 
   /* Test sizes should highlight performance dips at multiples of certain powers-of-two */
 
-  int test_sizes[] = 
-
+#ifdef EVEN_TEST_CASES_ONLY
+  int test_sizes[] = {32, 64, 128, 256, 512, 1024, 2048, 4096};
+#else
   /* Multiples-of-32, +/- 1. Currently commented. */
   /* {31,32,33,63,64,65,95,96,97,127,128,129,159,160,161,191,192,193,223,224,225,255,256,257,287,288,289,319,320,321,351,352,353,383,384,385,415,416,417,447,448,449,479,480,481,511,512,513,543,544,545,575,576,577,607,608,609,639,640,641,671,672,673,703,704,705,735,736,737,767,768,769,799,800,801,831,832,833,863,864,865,895,896,897,927,928,929,959,960,961,991,992,993,1023,1024,1025}; */
 
@@ -106,6 +107,7 @@ int main (int argc, char **argv)
 
   /* Simple test cases. */
     // {512};
+#endif
 
   int nsizes = sizeof(test_sizes)/sizeof(test_sizes[0]);
 
@@ -178,10 +180,12 @@ int main (int argc, char **argv)
     /* C := |C| - 3 * e_mach * n * |A| * |B|, computed with reference_dgemm */ 
     reference_dgemm (n, -3.*DBL_EPSILON*n, A, B, C);
 
+#ifndef TEST_INACCURATE_MULTIPLY
     /* If any element in C is positive, then something went wrong in square_dgemm */
     for (int i = 0; i < n * n; ++i)
       if (C[i] > 0)
 	die("*** FAILURE *** Error in matrix multiply exceeds componentwise error bounds.\n" );
+#endif
   }
 
   /* Calculating average percentage of peak reached by algorithm */
