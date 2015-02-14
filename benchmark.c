@@ -102,7 +102,7 @@ int main (int argc, char **argv)
 
   /* A representative subset of the first list. Currently uncommented. */ 
 
-  { 31, 32, 96, 97, 127, 128, 129, 191, 192, 229, 255, 256, 257,
+  int test_sizes[] = { 31, 32, 96, 97, 127, 128, 129, 191, 192, 229, 255, 256, 257,
     319, 320, 321, 417, 479, 480, 511, 512, 639, 640, 767, 768, 769 };
 
   /* Simple test cases. */

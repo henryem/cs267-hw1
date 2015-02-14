@@ -1,4 +1,5 @@
 for block_size in 2 4 8 16 32 64 ; do
+  echo "block_size = ${block_size}"
   make EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size}" && qsub job-blocked-simple
   # On Mac:
   # make OSX=1 EXTERNAL_CFLAGS="-DBLOCK_SIZE=${block_size}" && ./benchmark-blocked-simple
