@@ -2,21 +2,17 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "dgemm-blocked.h"
+#include "dgemm-blocked-multi.h"
 #include "matrix-storage.h"
 #include "matrix-blocking.h"
 
 const char* dgemm_desc = "Blocked dgemm with optimizations.";
 
-#if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE 41
-#endif
-
 #define min(a,b) (((a)<(b))?(a):(b))
 
 const int NUM_LEVELS = 2;
 //FIXME
-const int BLOCK_COUNTS[] = {8, 32};
+const int BLOCK_COUNTS[] = {4, 4};
 
 dgemm_square_block_strategy* dgemm_square_block_strategy_new(int num_levels, const int *block_counts) {
   dgemm_square_block_strategy* s = malloc(sizeof(dgemm_square_block_strategy));
@@ -139,21 +135,18 @@ static dgemm_square_block_strategy* get_static_strategy(int matrix_size) {
 }
 
 void square_dgemm_with_strategy(int matrix_size, double* A, double* B, double* C, dgemm_square_block_strategy* dgemm_strategy) {
-  //FIXME: Do padding.
-  
   // Determine the storage strategy to be used for the matrices.
   int storage_block_size = smallest_block_size(dgemm_strategy, matrix_size);
-  square_matrix_storage_format* new_format = square_matrix_storage_format_new(matrix_size, BLOCK_CM, storage_block_size);
   
   // Copy each matrix into block format.
   // printf("Copying matrices to block format.\n");
   square_matrix_storage_format* original_format = square_matrix_storage_format_new(matrix_size, COLUMN_MAJOR, 0);
-  double* formatted_a = to_format(A, original_format, new_format);
-  double* formatted_b = to_format(B, original_format, new_format);
-  double* formatted_c = to_format(C, original_format, new_format);
+  square_matrix_storage_format* new_format = padded_format(original_format, BLOCK_CM, storage_block_size);
+  double* formatted_a = pad_to_format(new_format, A, original_format);
+  double* formatted_b = pad_to_format(new_format, B, original_format);
+  double* formatted_c = pad_to_format(new_format, C, original_format);
   
   // Do the matrix multiply, storing the result in formatted_c.
-  // printf("Starting recursive_block_dgemm with %d levels\n", dgemm_strategy->num_levels);
   square_mat_square_block* a_blocks = make_blocks_for_strategy(dgemm_strategy, new_format);
   square_mat_square_block* b_blocks = make_blocks_for_strategy(dgemm_strategy, new_format);
   square_mat_square_block* c_block = make_smallest_block_for_strategy(dgemm_strategy, new_format);
@@ -161,8 +154,11 @@ void square_dgemm_with_strategy(int matrix_size, double* A, double* B, double* C
   recursive_block_dgemm(formatted_a, a_blocks, formatted_b, b_blocks, formatted_c, c_block, dgemm_strategy, dgemm_strategy->num_levels);
   
   // Copy the result back to C.
-  copy_to_format(formatted_c, new_format, C, original_format);
+  double* unformatted_c = unpad_to_format(original_format, formatted_c, new_format);
+  //FIXME: Extra copy here.
+  copy_to_format(unformatted_c, original_format, C, original_format);
   
+  free(unformatted_c);
   free(a_blocks);
   free(b_blocks);
   free(c_block);

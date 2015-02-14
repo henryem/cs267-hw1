@@ -12,7 +12,7 @@
 #include "unit-test-framework.h"
 #include "matrix-blocking.h"
 #include "matrix-storage.h"
-#include "dgemm-blocked.h"
+#include "dgemm-blocked-multi.h"
 
 /* reference_dgemm wraps a call to the BLAS-3 routine DGEMM, via the standard FORTRAN interface - hence the reference semantics. */ 
 #define DGEMM dgemm_
