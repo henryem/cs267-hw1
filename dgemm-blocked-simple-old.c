@@ -1,11 +1,12 @@
 #include <assert.h>
+#include <smmintrin.h>
 
 #include "matrix-storage.h"
 
 const char* dgemm_desc = "One-level blocked dgemm with optimizations.";
 
 #if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE 8
+#define BLOCK_SIZE 64
 #endif
 
 #if !defined(SIMD_VECTOR_SIZE)
@@ -38,48 +39,42 @@ static void do_block(int block_size, double* a_block, double* b_block, double* c
   }
 }
 
-/* As do_block, but with performance optimizations.  Since we want the compiler
- * to optimize an inner loop here, the block size must divide the size of the
- * inner loop.  For now there is only 1 inner loop size: SIMD_VECTOR_SIZE.
+/* As do_block, but with performance optimizations.  The block size must divide
+ * the size of the inner loop.  For now there is only 1 inner loop size:
+ * SIMD_VECTOR_SIZE.
  */
-static void do_block_with_autovectorization(int block_size, double* a_block, double* b_block, double* c_block) {
+static void do_block_with_simd(int block_size, double* a_block, double* b_block, double* c_block) {
   assert(block_size % SIMD_VECTOR_SIZE == 0);
   int num_subvectors = block_size / SIMD_VECTOR_SIZE;
   /* For each column of b_block */ 
   for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
-    double* b_col = b_block + b_col_idx*block_size;
-    double* c_col = c_block + b_col_idx*block_size;
+    double *restrict b_col = b_block + b_col_idx*block_size;
+    double *restrict c_col = c_block + b_col_idx*block_size;
     /* For each row of a_block */
     for (int a_row_idx = 0; a_row_idx < block_size; a_row_idx++) {
       /* Compute the inner product and increment c_block[a_row_idx,b_col_idx].
-       * To get autovectorization to work, we divide the inner product into
-       * a sum of inner products of vectors of size SIMD_VECTOR_SIZE.
+       * We divide the inner product into a sum of inner products of vectors of
+       * size SIMD_VECTOR_SIZE, to make the problem amenable to SIMD.
        */
-      double* a_row = a_block + a_row_idx*block_size;
-      double running_sum = 0.0;
+      double *restrict a_row = a_block + a_row_idx*block_size;
+      register __m128d running_sum = _mm_load_sd(c_col + a_row_idx);
       for (int subvector_idx = 0; subvector_idx < num_subvectors; subvector_idx++) {
-        // The following loop is supposed to be autovectorized:
-        for (int inner_idx = subvector_idx*SIMD_VECTOR_SIZE; inner_idx < (subvector_idx+1)*SIMD_VECTOR_SIZE; inner_idx++) {
-          running_sum += a_row[inner_idx] * b_col[inner_idx];
-        }
+        // Load elements of a_row and b_col:
+        __m128d a_elts0 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE);
+        __m128d a_elts1 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE + 2);
+        __m128d a_elts2 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE + 4);
+        __m128d a_elts3 = _mm_load_pd(a_row + subvector_idx*SIMD_VECTOR_SIZE + 6);
+        __m128d b_elts0 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE);
+        __m128d b_elts1 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE + 2);
+        __m128d b_elts2 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE + 4);
+        __m128d b_elts3 = _mm_load_pd(b_col + subvector_idx*SIMD_VECTOR_SIZE + 6);
+        __m128d dot_product0 = _mm_dp_pd(a_elts0, b_elts0, 0xff);
+        __m128d dot_product1 = _mm_dp_pd(a_elts1, b_elts1, 0xff);
+        __m128d dot_product2 = _mm_dp_pd(a_elts2, b_elts2, 0xff);
+        __m128d dot_product3 = _mm_dp_pd(a_elts3, b_elts3, 0xff);
+        running_sum = _mm_add_sd(_mm_add_sd(_mm_add_sd(_mm_add_sd(running_sum, dot_product0), dot_product1), dot_product2), dot_product3);
       }
-      c_col[a_row_idx] += running_sum;
-    }
-  }
-}
-
-static void do_block_with_simd(int block_size, double* a_block, double* b_block, double* c_block) {
-  /* For each column of b_block */ 
-  for (int b_col_idx = 0; b_col_idx < block_size; b_col_idx++) {
-    /* For each row of a_block */
-    for (int a_row_idx = 0; a_row_idx < block_size; a_row_idx++) {
-      /* Compute the inner product and increment c_block[a_row_idx,b_col_idx] */
-      int c_raw_idx = a_row_idx + b_col_idx*block_size;
-      double running_sum = 0.0;
-      for (int inner_idx = 0; inner_idx < block_size; inner_idx++) {
-	      running_sum += a_block[inner_idx + a_row_idx*block_size] * b_block[inner_idx + b_col_idx*block_size];
-      }
-      c_block[c_raw_idx] += running_sum;
+      _mm_store_sd(c_col + a_row_idx, running_sum); //FIXME: Not sure this is the right operation.
     }
   }
 }
@@ -132,8 +127,10 @@ static void do_full_dgemm(double* A, square_matrix_storage_format* a_format, dou
         double* block_pointer_in_b = B + b_block_first_element_raw_idx;
         // We already calculated the pointer for C, since the target block in C
         // doesn't change through this inner loop.
+        // Now we multiply the two blocks.  We use SIMD-optimized code if
+        // possible.
         if (block_size % SIMD_VECTOR_SIZE == 0) {
-          do_block_with_autovectorization(block_size, block_pointer_in_a, block_pointer_in_b, block_pointer_in_c);
+          do_block_with_simd(block_size, block_pointer_in_a, block_pointer_in_b, block_pointer_in_c);
         } else {
           do_block(block_size, block_pointer_in_a, block_pointer_in_b, block_pointer_in_c);
         }

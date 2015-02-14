@@ -24,15 +24,10 @@ ifdef PROFILE
   INSTRUMENTATION = -pg -g
 endif
 
-ifdef FULL_OPT
-  ifdef HOPPER
-    #HACK: -ftree-vectorizer is not available with Clang, the compiler we are using on OSX.
-    OPTIMIZATION = -O3 -ftree-vectorize -ftree-vectorizer-verbose=2
-  else
-    OPTIMIZATION = -O3
-  endif
-else
-  OPTIMIZATION = -O0
+ifdef NO_OPT
+  OPTIMIZATION = -msse4.1 -O0
+else  
+  OPTIMIZATION = -msse4.1 -O3
 endif
 
 OPT = $(INSTRUMENTATION) $(OPTIMIZATION)
