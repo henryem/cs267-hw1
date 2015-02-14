@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <emmintrin.h>
 
-const char* dgemm_desc = "SIMD";
+const char* dgemm_desc = "SIMD_new";
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
@@ -42,6 +42,8 @@ void square_dgemm (int n, double* A, double* B, double* C)
   for (i = 0; i <= n-SM; i+= SM){
     for (j=0; j<= n-SM; j+=SM){
       for (k=0; k<=n-SM; k+=SM){
+
+
         for (i2 = 0, rC = &C[i+j*n], rB = &B[k+j*n]; i2 < SM;
         ++i2, rC += n, rB += n)
         {
